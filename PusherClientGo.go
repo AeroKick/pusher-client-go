@@ -12,7 +12,7 @@ type Subscription struct {
 	channel string
 }
 
-type Callback func(data string)
+type Callback func(data PusherMessage)
 
 type PusherClient struct {
 	//socket
@@ -182,7 +182,7 @@ func (pusherClient *PusherClient) read() {
 
 			callback, ok := pusherClient.callbacks[pm.Channel]
 			if ok {
-				callback(pm.Data)
+				callback(pm)
 			}
 			pusherClient.mutex.Unlock()
 		}
