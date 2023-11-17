@@ -17,7 +17,7 @@ type Callback func(data PusherMessage)
 type PusherClient struct {
 	//socket
 	connectionString string
-	socketId         string
+	socketId         *string
 	conn             *websocket.Conn
 
 	// Subscriptions
@@ -82,18 +82,8 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 
 	pusherClient.callbacks[channel] = callback
 
-	auth := ""
-
-	//We need to get auth if the user provided an auth function
-	if pusherClient.AuthFunc != nil && authNeeded {
-		auth = (*pusherClient.AuthFunc)(channel, pusherClient.socketId)
-	}
-
-	subscriptionMessage := pusherClient.getSubscribeChatMessage(channel, auth)
-
-	err := pusherClient.conn.WriteJSON(subscriptionMessage)
-	if err != nil {
-		return err
+	if pusherClient.socketId != nil {
+		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
 	}
 
 	return nil
@@ -120,6 +110,29 @@ func (pusherClient *PusherClient) Unsubscribe(channel string) error {
 	return nil
 }
 
+func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
+	pusherClient.mutex.Lock()
+	auth := ""
+
+	// We need to get auth if the user provided an auth function
+	if pusherClient.AuthFunc != nil {
+		auth = (*pusherClient.AuthFunc)(sub.channel, *pusherClient.socketId)
+	}
+
+	subscriptionMessage := pusherClient.getSubscribeChatMessage(sub.channel, auth)
+
+	pusherClient.conn.WriteJSON(subscriptionMessage)
+	pusherClient.mutex.Unlock()
+
+}
+
+func (pusherClient *PusherClient) handleSendSubscriptions() {
+	for channel := range pusherClient.subscriptions {
+		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
+	}
+
+}
+
 func (pusherClient *PusherClient) handleReconnect() {
 	// Initialize the delay for exponential falloff
 	delay := 1 * time.Second
@@ -141,24 +154,8 @@ func (pusherClient *PusherClient) handleReconnect() {
 		}
 	}
 
-	pusherClient.mutex.Lock()
-	for channel := range pusherClient.subscriptions {
-		auth := ""
-
-		// We need to get auth if the user provided an auth function
-		if pusherClient.AuthFunc != nil {
-			auth = (*pusherClient.AuthFunc)(channel, pusherClient.socketId)
-		}
-
-		subscriptionMessage := pusherClient.getSubscribeChatMessage(channel, auth)
-
-		err := pusherClient.conn.WriteJSON(subscriptionMessage)
-		if err != nil {
-			// If the subscription fails, attempt to handle reconnection again
-			pusherClient.handleReconnect()
-		}
-	}
-	pusherClient.mutex.Unlock()
+	// Once the socket is reconnected, send all subscriptions again
+	pusherClient.handleSendSubscriptions()
 }
 
 func (pusherClient *PusherClient) read() {
@@ -177,7 +174,8 @@ func (pusherClient *PusherClient) read() {
 			case "pusher:connection_established":
 				var parsedData ConnectionMessage
 				json.Unmarshal([]byte(pm.Data), &parsedData)
-				pusherClient.socketId = parsedData.SocketId
+				pusherClient.socketId = &parsedData.SocketId
+				pusherClient.handleSendSubscriptions()
 			}
 
 			callback, ok := pusherClient.callbacks[pm.Channel]
