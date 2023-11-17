@@ -41,9 +41,9 @@ type PusherClientConfig struct {
 	AuthFunc PusherClientAuthFunc
 }
 
-func NewPusherClient(connectionString string, config *PusherClientConfig) *PusherClient {
+func NewPusherClient(config *PusherClientConfig) *PusherClient {
 	pusherClient := PusherClient{
-		connectionString: connectionString,
+		connectionString: config.ConnectionString,
 		subscriptions:    make(map[string]Subscription),
 		callbacks:        make(map[string]Callback),
 		AuthFunc:         &config.AuthFunc,
