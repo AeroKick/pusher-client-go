@@ -136,7 +136,6 @@ func (pusherClient *PusherClient) handleSendSubscriptions() {
 	for channel := range pusherClient.subscriptions {
 		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
 	}
-
 }
 
 func (pusherClient *PusherClient) handleReconnect() {
@@ -186,13 +185,13 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 				var pm PusherMessage
 				json.Unmarshal(message, &pm)
 
-				pusherClient.mutex.Lock()
-				defer pusherClient.mutex.Unlock()
 				switch pm.Event {
 				case "pusher:connection_established":
 					var parsedData ConnectionMessage
 					json.Unmarshal([]byte(pm.Data), &parsedData)
+					pusherClient.mutex.Lock()
 					pusherClient.socketId = &parsedData.SocketId
+					pusherClient.mutex.Unlock()
 					pusherClient.handleSendSubscriptions()
 				}
 
@@ -200,7 +199,6 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 				if ok {
 					callback(pm)
 				}
-				pusherClient.mutex.Unlock()
 			}
 		}
 	}
