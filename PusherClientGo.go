@@ -59,13 +59,14 @@ func NewPusherClient(config *PusherClientConfig) *PusherClient {
 }
 
 func (pusherClient *PusherClient) Connect() error {
+	pusherClient.mutex.Lock()
+
 	pusherClient.ctx, pusherClient.cancel = context.WithCancel(context.Background())
 	c, _, err := websocket.DefaultDialer.Dial(pusherClient.connectionString, nil)
 	if err != nil {
 		return err
 	}
 
-	pusherClient.mutex.Lock()
 	pusherClient.conn = c
 	pusherClient.mutex.Unlock()
 	go pusherClient.read(pusherClient.ctx)
@@ -118,6 +119,7 @@ func (pusherClient *PusherClient) Unsubscribe(channel string) error {
 
 func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
 	pusherClient.mutex.Lock()
+	defer pusherClient.mutex.Unlock()
 	auth := ""
 
 	// We need to get auth if the user provided an auth function
@@ -128,8 +130,6 @@ func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
 	subscriptionMessage := pusherClient.getSubscribeChatMessage(sub.channel, auth)
 
 	pusherClient.conn.WriteJSON(subscriptionMessage)
-	pusherClient.mutex.Unlock()
-
 }
 
 func (pusherClient *PusherClient) handleSendSubscriptions() {
@@ -148,6 +148,7 @@ func (pusherClient *PusherClient) handleReconnect() {
 		pusherClient.conn.Close()
 		pusherClient.conn = nil
 	}
+	pusherClient.mutex.Unlock()
 
 	for {
 		// Attempt to reconnect to the socket
@@ -186,6 +187,7 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 				json.Unmarshal(message, &pm)
 
 				pusherClient.mutex.Lock()
+				defer pusherClient.mutex.Unlock()
 				switch pm.Event {
 				case "pusher:connection_established":
 					var parsedData ConnectionMessage
@@ -211,6 +213,6 @@ func (pusherClient *PusherClient) Close() {
 	// Close the WebSocket connection and other cleanup...
 	pusherClient.conn.Close()
 	pusherClient.mutex.Lock()
+	defer pusherClient.mutex.Unlock()
 	pusherClient.conn = nil
-	pusherClient.mutex.Unlock()
 }
