@@ -151,6 +151,10 @@ func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
 	subscriptionMessage := pusherClient.getSubscribeChatMessage(sub.channel, auth)
 
 	pusherClient.conn.WriteJSON(subscriptionMessage)
+	if pusherClient.debug {
+		log.Printf("Sent subscription for channel: %s", sub.channel)
+	}
+	pusherClient.mutex.Unlock()
 }
 
 func (pusherClient *PusherClient) handleSendSubscriptions() {
