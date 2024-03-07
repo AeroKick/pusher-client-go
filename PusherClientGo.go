@@ -154,7 +154,6 @@ func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
 	if pusherClient.debug {
 		log.Printf("Sent subscription for channel: %s", sub.channel)
 	}
-	pusherClient.mutex.Unlock()
 }
 
 func (pusherClient *PusherClient) handleSendSubscriptions() {
@@ -173,7 +172,6 @@ func (pusherClient *PusherClient) handleReconnect() {
 	// Initialize the delay for exponential falloff
 	delay := 1 * time.Second
 	pusherClient.mutex.Lock()
-	defer pusherClient.mutex.Unlock()
 	if pusherClient.conn != nil {
 		pusherClient.conn.Close()
 		pusherClient.conn = nil
