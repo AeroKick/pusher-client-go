@@ -1,6 +1,7 @@
 package PusherClientGo
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -31,6 +32,10 @@ type PusherClient struct {
 
 	//mutex
 	mutex *sync.Mutex
+
+	//Context
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type PusherClientAuthFunc func(channel string, socketId string) string
@@ -54,6 +59,7 @@ func NewPusherClient(config *PusherClientConfig) *PusherClient {
 }
 
 func (pusherClient *PusherClient) Connect() error {
+	pusherClient.ctx, pusherClient.cancel = context.WithCancel(context.Background())
 	c, _, err := websocket.DefaultDialer.Dial(pusherClient.connectionString, nil)
 	if err != nil {
 		return err
@@ -62,7 +68,7 @@ func (pusherClient *PusherClient) Connect() error {
 	pusherClient.mutex.Lock()
 	pusherClient.conn = c
 	pusherClient.mutex.Unlock()
-	go pusherClient.read()
+	go pusherClient.read(pusherClient.ctx)
 
 	return nil
 }
@@ -136,6 +142,12 @@ func (pusherClient *PusherClient) handleSendSubscriptions() {
 func (pusherClient *PusherClient) handleReconnect() {
 	// Initialize the delay for exponential falloff
 	delay := 1 * time.Second
+	pusherClient.mutex.Lock()
+	defer pusherClient.mutex.Unlock()
+	if pusherClient.conn != nil {
+		pusherClient.conn.Close()
+		pusherClient.conn = nil
+	}
 
 	for {
 		// Attempt to reconnect to the socket
@@ -158,31 +170,47 @@ func (pusherClient *PusherClient) handleReconnect() {
 	pusherClient.handleSendSubscriptions()
 }
 
-func (pusherClient *PusherClient) read() {
+func (pusherClient *PusherClient) read(ctx context.Context) {
 	for {
-		messageType, message, err := pusherClient.conn.ReadMessage()
-		if err != nil {
-			pusherClient.handleReconnect()
-			break
-		}
-		if messageType == websocket.TextMessage {
-			var pm PusherMessage
-			json.Unmarshal(message, &pm)
-
-			pusherClient.mutex.Lock()
-			switch pm.Event {
-			case "pusher:connection_established":
-				var parsedData ConnectionMessage
-				json.Unmarshal([]byte(pm.Data), &parsedData)
-				pusherClient.socketId = &parsedData.SocketId
-				pusherClient.handleSendSubscriptions()
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			messageType, message, err := pusherClient.conn.ReadMessage()
+			if err != nil {
+				pusherClient.handleReconnect()
+				break
 			}
+			if messageType == websocket.TextMessage {
+				var pm PusherMessage
+				json.Unmarshal(message, &pm)
 
-			callback, ok := pusherClient.callbacks[pm.Channel]
-			if ok {
-				callback(pm)
+				pusherClient.mutex.Lock()
+				switch pm.Event {
+				case "pusher:connection_established":
+					var parsedData ConnectionMessage
+					json.Unmarshal([]byte(pm.Data), &parsedData)
+					pusherClient.socketId = &parsedData.SocketId
+					pusherClient.handleSendSubscriptions()
+				}
+
+				callback, ok := pusherClient.callbacks[pm.Channel]
+				if ok {
+					callback(pm)
+				}
+				pusherClient.mutex.Unlock()
 			}
-			pusherClient.mutex.Unlock()
 		}
 	}
+}
+
+func (pusherClient *PusherClient) Close() {
+	if pusherClient.cancel != nil {
+		pusherClient.cancel() // Signal the read goroutine to stop
+	}
+	// Close the WebSocket connection and other cleanup...
+	pusherClient.conn.Close()
+	pusherClient.mutex.Lock()
+	pusherClient.conn = nil
+	pusherClient.mutex.Unlock()
 }
