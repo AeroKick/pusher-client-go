@@ -3,6 +3,7 @@ package PusherClientGo
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 
@@ -36,6 +37,9 @@ type PusherClient struct {
 	//Context
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Debug
+	debug bool
 }
 
 type PusherClientAuthFunc func(channel string, socketId string) string
@@ -44,21 +48,29 @@ type PusherClientConfig struct {
 	ConnectionString string
 	//This is a pointer to a function that takes in a channel and socketId and returns an auth string
 	AuthFunc PusherClientAuthFunc
+	Debug    bool
 }
 
 func NewPusherClient(config *PusherClientConfig) *PusherClient {
+	if config.Debug {
+		log.Println("Creating new PusherClient")
+	}
 	pusherClient := PusherClient{
 		connectionString: config.ConnectionString,
 		subscriptions:    make(map[string]Subscription),
 		callbacks:        make(map[string]Callback),
 		AuthFunc:         &config.AuthFunc,
 		mutex:            &sync.Mutex{},
+		debug:            config.Debug,
 	}
 
 	return &pusherClient
 }
 
 func (pusherClient *PusherClient) Connect() error {
+	if pusherClient.debug {
+		log.Println("Connecting to Pusher")
+	}
 	pusherClient.mutex.Lock()
 
 	pusherClient.ctx, pusherClient.cancel = context.WithCancel(context.Background())
@@ -75,6 +87,9 @@ func (pusherClient *PusherClient) Connect() error {
 }
 
 func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, authNeeded bool) error {
+	if pusherClient.debug {
+		log.Printf("Subscribing to channel: %s", channel)
+	}
 	pusherClient.mutex.Lock()
 	defer pusherClient.mutex.Unlock()
 
@@ -97,6 +112,9 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 }
 
 func (pusherClient *PusherClient) Unsubscribe(channel string) error {
+	if pusherClient.debug {
+		log.Printf("Unsubscribing from channel: %s", channel)
+	}
 	pusherClient.mutex.Lock()
 	defer pusherClient.mutex.Unlock()
 
@@ -118,6 +136,9 @@ func (pusherClient *PusherClient) Unsubscribe(channel string) error {
 }
 
 func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
+	if pusherClient.debug {
+		log.Printf("Sending subscription for channel: %s", sub.channel)
+	}
 	pusherClient.mutex.Lock()
 	defer pusherClient.mutex.Unlock()
 	auth := ""
@@ -133,12 +154,18 @@ func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
 }
 
 func (pusherClient *PusherClient) handleSendSubscriptions() {
+	if pusherClient.debug {
+		log.Println("Sending all subscriptions")
+	}
 	for channel := range pusherClient.subscriptions {
 		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
 	}
 }
 
 func (pusherClient *PusherClient) handleReconnect() {
+	if pusherClient.debug {
+		log.Println("Handling reconnect")
+	}
 	// Initialize the delay for exponential falloff
 	delay := 1 * time.Second
 	pusherClient.mutex.Lock()
@@ -174,6 +201,9 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			if pusherClient.debug {
+				log.Println("Stopping read loop due to context cancellation")
+			}
 			return
 		default:
 			messageType, message, err := pusherClient.conn.ReadMessage()
@@ -205,6 +235,9 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 }
 
 func (pusherClient *PusherClient) Close() {
+	if pusherClient.debug {
+		log.Println("Closing PusherClient connection")
+	}
 	if pusherClient.cancel != nil {
 		pusherClient.cancel() // Signal the read goroutine to stop
 	}
