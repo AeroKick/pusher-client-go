@@ -13,14 +13,12 @@ func (pusherClient *PusherClient) getSubscribeChatMessage(channel string, auth s
 	}
 }
 
-func (pusherClient *PusherClient) getUnsubscribeChatMessage(channel string) PusherSubscriptionMessage {
-	return PusherSubscriptionMessage{
+func (pusherClient *PusherClient) getUnsubscribeChatMessage(channel string) PusherUnsubscribeMessage {
+	return PusherUnsubscribeMessage{
 		Event: "pusher:unsubscribe",
 		Data: struct {
-			Auth    string `json:"auth"`
 			Channel string `json:"channel"`
 		}{
-			Auth:    "",
 			Channel: channel,
 		},
 	}

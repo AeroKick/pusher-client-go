@@ -17,3 +17,10 @@ type PusherSubscriptionMessage struct {
 		Channel string `json:"channel"`
 	} `json:"data"`
 }
+
+type PusherUnsubscribeMessage struct {
+	Event string `json:"event"`
+	Data  struct {
+		Channel string `json:"channel"`
+	} `json:"data"`
+}
