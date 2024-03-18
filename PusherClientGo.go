@@ -72,6 +72,7 @@ func (pusherClient *PusherClient) Connect() error {
 		log.Println("Connecting to Pusher")
 	}
 	pusherClient.mutex.Lock()
+	defer pusherClient.mutex.Unlock()
 
 	pusherClient.ctx, pusherClient.cancel = context.WithCancel(context.Background())
 	c, _, err := websocket.DefaultDialer.Dial(pusherClient.connectionString, nil)
@@ -80,7 +81,6 @@ func (pusherClient *PusherClient) Connect() error {
 	}
 
 	pusherClient.conn = c
-	pusherClient.mutex.Unlock()
 	go pusherClient.read(pusherClient.ctx)
 
 	return nil
@@ -91,6 +91,7 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 		log.Printf("Subscribing to channel: %s", channel)
 	}
 	pusherClient.mutex.Lock()
+	defer pusherClient.mutex.Unlock()
 
 	_, ok := pusherClient.subscriptions[channel]
 	if ok {
@@ -102,7 +103,6 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 	}
 
 	pusherClient.callbacks[channel] = callback
-	pusherClient.mutex.Unlock()
 
 	if pusherClient.socketId != nil {
 		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
