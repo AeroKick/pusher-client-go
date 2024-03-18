@@ -91,10 +91,10 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 		log.Printf("Subscribing to channel: %s", channel)
 	}
 	pusherClient.mutex.Lock()
-	defer pusherClient.mutex.Unlock()
 
 	_, ok := pusherClient.subscriptions[channel]
 	if ok {
+		pusherClient.mutex.Unlock()
 		return nil
 	}
 
@@ -103,6 +103,7 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 	}
 
 	pusherClient.callbacks[channel] = callback
+	pusherClient.mutex.Unlock()
 
 	if pusherClient.socketId != nil {
 		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
