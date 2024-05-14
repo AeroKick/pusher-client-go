@@ -91,25 +91,22 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 		log.Printf("Subscribing to channel: %s", channel)
 	}
 
-	// Lock only to check and possibly add to subscriptions map
-	pusherClient.mutex.Lock()
+	pusherClient.mutex.RLock()
 	subscription, ok := pusherClient.subscriptions[channel]
+	pusherClient.mutex.RUnlock()
 	if ok {
-		pusherClient.mutex.Unlock()
 		return nil
 	}
 
-	// Create a new subscription and add it to the map
+	pusherClient.mutex.Lock()
 	subscription = Subscription{channel: channel}
 	pusherClient.subscriptions[channel] = subscription
 	pusherClient.mutex.Unlock()
 
-	// Lock only to add to callbacks map
 	pusherClient.mutex.Lock()
 	pusherClient.callbacks[channel] = callback
 	pusherClient.mutex.Unlock()
 
-	// Handle sending the subscription if socketId is not nil
 	if pusherClient.socketId != nil {
 		pusherClient.handleSendSubscription(subscription)
 	}
@@ -121,19 +118,22 @@ func (pusherClient *PusherClient) Unsubscribe(channel string) error {
 	if pusherClient.debug {
 		log.Printf("Unsubscribing from channel: %s", channel)
 	}
-	pusherClient.mutex.Lock()
-	defer pusherClient.mutex.Unlock()
-
+	pusherClient.mutex.RLock()
 	_, ok := pusherClient.subscriptions[channel]
+	pusherClient.mutex.RUnlock()
 	if !ok {
 		return nil
 	}
 
+	pusherClient.mutex.Lock()
 	delete(pusherClient.subscriptions, channel)
+	pusherClient.mutex.Unlock()
 
 	unsubscribeMessage := pusherClient.getUnsubscribeChatMessage(channel)
 
+	pusherClient.mutex.Lock()
 	err := pusherClient.conn.WriteJSON(unsubscribeMessage)
+	pusherClient.mutex.Unlock()
 	if err != nil {
 		return err
 	}
@@ -145,18 +145,19 @@ func (pusherClient *PusherClient) handleSendSubscription(sub Subscription) {
 	if pusherClient.debug {
 		log.Printf("Sending subscription for channel: %s", sub.channel)
 	}
-	pusherClient.mutex.Lock()
-	defer pusherClient.mutex.Unlock()
 	auth := ""
 
-	// We need to get auth if the user provided an auth function
 	if pusherClient.AuthFunc != nil {
+		pusherClient.mutex.RLock()
 		auth = (*pusherClient.AuthFunc)(sub.channel, *pusherClient.socketId)
+		pusherClient.mutex.RUnlock()
 	}
 
 	subscriptionMessage := pusherClient.getSubscribeChatMessage(sub.channel, auth)
 
+	pusherClient.mutex.Lock()
 	pusherClient.conn.WriteJSON(subscriptionMessage)
+	pusherClient.mutex.Unlock()
 	if pusherClient.debug {
 		log.Printf("Sent subscription for channel: %s", sub.channel)
 	}
@@ -166,9 +167,13 @@ func (pusherClient *PusherClient) handleSendSubscriptions() {
 	if pusherClient.debug {
 		log.Println("Sending all subscriptions")
 	}
+	pusherClient.mutex.RLock()
 	for channel := range pusherClient.subscriptions {
+		pusherClient.mutex.RUnlock()
 		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
+		pusherClient.mutex.RLock()
 	}
+	pusherClient.mutex.RUnlock()
 }
 
 func (pusherClient *PusherClient) handleReconnect() {
@@ -233,9 +238,9 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 					pusherClient.handleSendSubscriptions()
 				}
 
-				pusherClient.mutex.Lock()
+				pusherClient.mutex.RLock()
 				callback, ok := pusherClient.callbacks[pm.Channel]
-				pusherClient.mutex.Unlock()
+				pusherClient.mutex.RUnlock()
 				if ok {
 					callback(pm)
 				}
