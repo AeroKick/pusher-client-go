@@ -107,8 +107,12 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 	pusherClient.callbacks[channel] = callback
 	pusherClient.mutex.Unlock()
 
+	pusherClient.mutex.RLock()
 	if pusherClient.socketId != nil {
+		pusherClient.mutex.RUnlock()
 		pusherClient.handleSendSubscription(subscription)
+	} else {
+		pusherClient.mutex.RUnlock()
 	}
 
 	return nil
