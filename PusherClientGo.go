@@ -32,7 +32,7 @@ type PusherClient struct {
 	AuthFunc *PusherClientAuthFunc
 
 	//mutex
-	mutex *sync.Mutex
+	mutex *sync.RWMutex
 
 	//Context
 	ctx    context.Context
@@ -60,7 +60,7 @@ func NewPusherClient(config *PusherClientConfig) *PusherClient {
 		subscriptions:    make(map[string]Subscription),
 		callbacks:        make(map[string]Callback),
 		AuthFunc:         &config.AuthFunc,
-		mutex:            &sync.Mutex{},
+		mutex:            &sync.RWMutex{},
 		debug:            config.Debug,
 	}
 
@@ -90,23 +90,28 @@ func (pusherClient *PusherClient) Subscribe(channel string, callback Callback, a
 	if pusherClient.debug {
 		log.Printf("Subscribing to channel: %s", channel)
 	}
-	pusherClient.mutex.Lock()
 
-	_, ok := pusherClient.subscriptions[channel]
+	// Lock only to check and possibly add to subscriptions map
+	pusherClient.mutex.Lock()
+	subscription, ok := pusherClient.subscriptions[channel]
 	if ok {
 		pusherClient.mutex.Unlock()
 		return nil
 	}
 
-	pusherClient.subscriptions[channel] = Subscription{
-		channel: channel,
-	}
+	// Create a new subscription and add it to the map
+	subscription = Subscription{channel: channel}
+	pusherClient.subscriptions[channel] = subscription
+	pusherClient.mutex.Unlock()
 
+	// Lock only to add to callbacks map
+	pusherClient.mutex.Lock()
 	pusherClient.callbacks[channel] = callback
 	pusherClient.mutex.Unlock()
 
+	// Handle sending the subscription if socketId is not nil
 	if pusherClient.socketId != nil {
-		pusherClient.handleSendSubscription(pusherClient.subscriptions[channel])
+		pusherClient.handleSendSubscription(subscription)
 	}
 
 	return nil
@@ -228,7 +233,9 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 					pusherClient.handleSendSubscriptions()
 				}
 
+				pusherClient.mutex.Lock()
 				callback, ok := pusherClient.callbacks[pm.Channel]
+				pusherClient.mutex.Unlock()
 				if ok {
 					callback(pm)
 				}
