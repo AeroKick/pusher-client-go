@@ -76,12 +76,13 @@ func (pusherClient *PusherClient) Connect() error {
 
 	pusherClient.ctx, pusherClient.cancel = context.WithCancel(context.Background())
 	c, _, err := websocket.DefaultDialer.Dial(pusherClient.connectionString, nil)
-	if err != nil {
-		return err
-	}
 
 	pusherClient.conn = c
 	go pusherClient.read(pusherClient.ctx)
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
