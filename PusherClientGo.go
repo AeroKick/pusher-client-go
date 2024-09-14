@@ -31,6 +31,9 @@ type PusherClient struct {
 	// Auth
 	AuthFunc *PusherClientAuthFunc
 
+	//Connection Status
+	Connected bool
+
 	//mutex
 	mutex *sync.RWMutex
 
@@ -83,6 +86,8 @@ func (pusherClient *PusherClient) Connect() error {
 	if err != nil {
 		return err
 	}
+
+	pusherClient.Connected = true
 
 	return nil
 }
@@ -222,10 +227,16 @@ func (pusherClient *PusherClient) read(ctx context.Context) {
 			if pusherClient.debug {
 				log.Println("Stopping read loop due to context cancellation")
 			}
+			pusherClient.mutex.Lock()
+			pusherClient.Connected = false
+			pusherClient.mutex.Unlock()
 			return
 		default:
 			messageType, message, err := pusherClient.conn.ReadMessage()
 			if err != nil {
+				pusherClient.mutex.Lock()
+				pusherClient.Connected = false
+				pusherClient.mutex.Unlock()
 				pusherClient.handleReconnect()
 				break
 			}
@@ -265,5 +276,7 @@ func (pusherClient *PusherClient) Close() {
 	pusherClient.conn.Close()
 	pusherClient.mutex.Lock()
 	defer pusherClient.mutex.Unlock()
+
+	pusherClient.Connected = false
 	pusherClient.conn = nil
 }
